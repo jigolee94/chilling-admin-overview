@@ -523,3 +523,43 @@ h2 {
     text-align: left;
   }
 }
+
+@media (max-width: 560px) {
+  .layout-section {
+    padding: 10px;
+  }
+
+  .layout-board {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    aspect-ratio: auto !important;
+    padding: 8px;
+    background-size: 28px 28px, 28px 28px, auto, auto;
+  }
+
+  .table-card {
+    position: relative;
+    left: auto !important;
+    top: auto !important;
+    width: 100%;
+    min-width: 0;
+    min-height: clamp(72px, calc(94px * var(--table-zoom, 0.82)), 102px);
+    padding: clamp(7px, calc(10px * var(--table-zoom, 0.82)), 10px);
+  }
+
+  .table-name,
+  .table-status,
+  .table-stage,
+  .table-time,
+  .table-end,
+  .table-empty-text {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 360px) {
+  .layout-board {
+    grid-template-columns: 1fr;
+  }
+}
