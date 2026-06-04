@@ -151,6 +151,64 @@ function useStores() {
   return { stores, loading, error, usingDemo: !firebaseConfigured };
 }
 
+function useStoreCollections(stores) {
+  const [tablesByStore, setTablesByStore] = useState(firebaseConfigured ? {} : demoTablesByStore);
+  const [timersByStore, setTimersByStore] = useState(firebaseConfigured ? {} : demoTimersByStore);
+  const [error, setError] = useState("");
+  const storeIds = useMemo(() => stores.map((store) => store.id).filter(Boolean).join("|"), [stores]);
+
+  useEffect(() => {
+    if (!firebaseConfigured || !db) {
+      setTablesByStore(demoTablesByStore);
+      setTimersByStore(demoTimersByStore);
+      return undefined;
+    }
+
+    const ids = storeIds.split("|").filter(Boolean);
+    setError("");
+
+    if (!ids.length) {
+      setTablesByStore({});
+      setTimersByStore({});
+      return undefined;
+    }
+
+    setTablesByStore((prev) => Object.fromEntries(ids.map((id) => [id, prev[id] || []])));
+    setTimersByStore((prev) => Object.fromEntries(ids.map((id) => [id, prev[id] || []])));
+
+    const unsubscribes = ids.flatMap((storeId) => [
+      onSnapshot(
+        query(collection(db, "stores", storeId, "tables")),
+        (snapshot) => {
+          setTablesByStore((prev) => ({ ...prev, [storeId]: snapshot.docs.map(fromSnapshot) }));
+          setError("");
+        },
+        (err) => {
+          console.error(err);
+          setError("전체지점 테이블 현황을 불러오지 못했어요.");
+        }
+      ),
+      onSnapshot(
+        query(collection(db, "stores", storeId, "timers")),
+        (snapshot) => {
+          setTimersByStore((prev) => ({ ...prev, [storeId]: snapshot.docs.map(fromSnapshot) }));
+          setError("");
+        },
+        (err) => {
+          console.error(err);
+          setError("전체지점 타이머 현황을 불러오지 못했어요.");
+        }
+      ),
+    ]);
+
+    return () => {
+      unsubscribes.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [storeIds]);
+
+  return { tablesByStore, timersByStore, error };
+}
+
 function useStoreDetail(storeId) {
   const [tables, setTables] = useState(demoTablesByStore[storeId] || []);
   const [timers, setTimers] = useState(demoTimersByStore[storeId] || []);
@@ -274,18 +332,16 @@ function Metric({ label, value, tone = "" }) {
   );
 }
 
-function StoreList({ stores, now, onSelect, usingDemo }) {
-  const tablesByStore = firebaseConfigured ? {} : demoTablesByStore;
-  const timersByStore = firebaseConfigured ? {} : demoTimersByStore;
+function StoreList({ stores, tablesByStore, timersByStore, now, onSelect, usingDemo }) {
   const summary = stores.reduce(
     (acc, store) => {
       const tables = tablesByStore[store.id] || [];
       const timers = timersByStore[store.id] || [];
       const stats = buildStoreStats(store, tables, timers, now);
-      acc.active += Number(store.activeTimerCount ?? stats.activeTimerCount ?? 0);
-      acc.overdue += Number(store.overdueCount ?? stats.overdueCount ?? 0);
-      acc.urgent += Number(store.urgentCount ?? stats.urgentCount ?? 0);
-      acc.refill += Number(store.refillReminderCount ?? stats.refillCount ?? 0);
+      acc.active += stats.activeTimerCount;
+      acc.overdue += stats.overdueCount;
+      acc.urgent += stats.urgentCount;
+      acc.refill += stats.refillCount;
       return acc;
     },
     { active: 0, overdue: 0, urgent: 0, refill: 0 }
@@ -421,6 +477,7 @@ function StoreDetail({ store, now, onBack }) {
 
 export default function App() {
   const { stores, loading, error, usingDemo } = useStores();
+  const { tablesByStore, timersByStore, error: overviewError } = useStoreCollections(stores);
   const [selectedStoreId, setSelectedStoreId] = useState(null);
   const [now, setNow] = useState(Date.now());
 
@@ -434,6 +491,7 @@ export default function App() {
   return (
     <main className="app-shell">
       {error && <div className="notice error">{error}</div>}
+      {overviewError && <div className="notice error">{overviewError}</div>}
       {loading && <div className="notice">Firestore 데이터를 불러오는 중...</div>}
       {usingDemo && (
         <div className="notice demo">
@@ -443,7 +501,7 @@ export default function App() {
       {selectedStore ? (
         <StoreDetail store={selectedStore} now={now} onBack={() => setSelectedStoreId(null)} />
       ) : (
-        <StoreList stores={stores} now={now} onSelect={setSelectedStoreId} usingDemo={usingDemo} />
+        <StoreList stores={stores} tablesByStore={tablesByStore} timersByStore={timersByStore} now={now} onSelect={setSelectedStoreId} usingDemo={usingDemo} />
       )}
     </main>
   );
