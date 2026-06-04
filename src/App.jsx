@@ -4,6 +4,14 @@ import { db, firebaseConfigured } from "./firebase.js";
 import { demoStores, demoTablesByStore, demoTimersByStore } from "./demoData.js";
 
 const CUSTOMER_SESSION_MINUTES = 90;
+const DEFAULT_LAYOUT_ZOOM = 0.82;
+const MIN_LAYOUT_ZOOM = 0.58;
+const MAX_LAYOUT_ZOOM = 1.12;
+const LAYOUT_ZOOM_STEP = 0.08;
+
+function clampLayoutZoom(value) {
+  return Math.min(MAX_LAYOUT_ZOOM, Math.max(MIN_LAYOUT_ZOOM, Number(value.toFixed(2))));
+}
 
 function toMillis(value) {
   if (!value) return null;
@@ -378,6 +386,7 @@ function StoreList({ stores, tablesByStore, timersByStore, now, onSelect, usingD
 
 function StoreDetail({ store, now, onBack }) {
   const { tables, timers, error } = useStoreDetail(store?.id);
+  const [layoutZoom, setLayoutZoom] = useState(DEFAULT_LAYOUT_ZOOM);
   const stats = buildStoreStats(store, tables, timers, now);
   const timerByTable = new Map(stats.enrichedTimers.map((timer) => [timer.tableId, timer]));
   const layoutWidth = Number(store.layoutWidth || Math.max(...tables.map((table) => Number(table.x || 0) + 32), 140));
@@ -418,10 +427,17 @@ function StoreDetail({ store, now, onBack }) {
       <section className="layout-section">
         <div className="section-title">
           <h2>테이블 배치도</h2>
-          <span>{tables.length}개 테이블</span>
+          <div className="layout-toolbar">
+            <span>{tables.length}개 테이블</span>
+            <div className="zoom-controls" aria-label="테이블 크기 조절">
+              <button type="button" aria-label="테이블 작게" onClick={() => setLayoutZoom((value) => clampLayoutZoom(value - LAYOUT_ZOOM_STEP))}>−</button>
+              <strong>{Math.round(layoutZoom * 100)}%</strong>
+              <button type="button" aria-label="테이블 크게" onClick={() => setLayoutZoom((value) => clampLayoutZoom(value + LAYOUT_ZOOM_STEP))}>+</button>
+            </div>
+          </div>
         </div>
         <div className="layout-scroll">
-          <div className="layout-board" style={{ aspectRatio: `${layoutWidth} / ${layoutHeight}` }}>
+          <div className="layout-board" style={{ aspectRatio: `${layoutWidth} / ${layoutHeight}`, "--table-zoom": layoutZoom }}>
             {tables.map((table) => {
               const timer = timerByTable.get(table.id);
               const status = computeTimerStatus(timer, now);

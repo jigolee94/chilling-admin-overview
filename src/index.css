@@ -311,17 +311,58 @@ h2 {
   font-weight: 800;
 }
 
+.layout-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 999px;
+  padding: 4px;
+  background: rgba(0,0,0,0.28);
+}
+
+.zoom-controls button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 999px;
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.34);
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 1000;
+}
+
+.zoom-controls button:hover {
+  background: rgba(185, 28, 28, 0.58);
+}
+
+.zoom-controls strong {
+  min-width: 44px;
+  color: rgba(255,255,255,0.76);
+  font-size: 12px;
+  font-weight: 950;
+  text-align: center;
+}
+
 .layout-scroll {
-  overflow-x: auto;
-  padding-bottom: 4px;
+  overflow: visible;
 }
 
 .layout-board {
   position: relative;
-  min-width: 720px;
   width: 100%;
   border: 1px solid rgba(248, 113, 113, 0.14);
-  border-radius: 26px;
+  border-radius: 22px;
   background:
     linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px),
@@ -332,11 +373,11 @@ h2 {
 
 .table-card {
   position: absolute;
-  width: 118px;
-  min-height: 98px;
+  width: clamp(74px, calc(118px * var(--table-zoom, 0.82)), 132px);
+  min-height: clamp(62px, calc(98px * var(--table-zoom, 0.82)), 110px);
   border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 20px;
-  padding: 10px;
+  border-radius: clamp(13px, calc(20px * var(--table-zoom, 0.82)), 22px);
+  padding: clamp(6px, calc(10px * var(--table-zoom, 0.82)), 11px);
   transform: translateZ(0);
   overflow: hidden;
   box-shadow: 0 18px 40px rgba(0,0,0,0.22);
@@ -358,7 +399,7 @@ h2 {
 
 .table-name {
   position: relative;
-  font-size: 14px;
+  font-size: clamp(10px, calc(14px * var(--table-zoom, 0.82)), 15px);
   font-weight: 1000;
   letter-spacing: -0.04em;
 }
@@ -368,10 +409,10 @@ h2 {
   display: inline-block;
   margin-top: 5px;
   border-radius: 999px;
-  padding: 3px 7px;
+  padding: 3px clamp(5px, calc(7px * var(--table-zoom, 0.82)), 8px);
   background: rgba(0,0,0,0.34);
   color: rgba(255,255,255,0.8);
-  font-size: 10px;
+  font-size: clamp(8px, calc(10px * var(--table-zoom, 0.82)), 10px);
   font-weight: 900;
 }
 
@@ -382,14 +423,14 @@ h2 {
   position: relative;
   margin-top: 5px;
   color: rgba(255,255,255,0.72);
-  font-size: 11px;
+  font-size: clamp(8px, calc(11px * var(--table-zoom, 0.82)), 11px);
   font-weight: 800;
   line-height: 1.25;
 }
 
 .table-time {
   color: white;
-  font-size: 12px;
+  font-size: clamp(9px, calc(12px * var(--table-zoom, 0.82)), 12px);
   font-weight: 1000;
 }
 
@@ -467,12 +508,13 @@ h2 {
     align-items: flex-start;
     flex-direction: column;
   }
+  .layout-toolbar {
+    width: 100%;
+    justify-content: space-between;
+  }
   .reservation-time {
     width: 100%;
     text-align: left;
-  }
-  .layout-board {
-    min-width: 620px;
   }
   .timer-row {
     grid-template-columns: 1fr;
