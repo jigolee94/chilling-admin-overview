@@ -5,7 +5,7 @@ import { demoStores, demoTablesByStore, demoTimersByStore } from "./demoData.js"
 
 const CUSTOMER_SESSION_MINUTES = 90;
 const DEFAULT_LAYOUT_ZOOM = 0.82;
-const MIN_LAYOUT_ZOOM = 0.58;
+const MIN_LAYOUT_ZOOM = 0.42;
 const MAX_LAYOUT_ZOOM = 1.12;
 const LAYOUT_ZOOM_STEP = 0.08;
 
