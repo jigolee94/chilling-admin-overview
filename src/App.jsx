@@ -21,6 +21,26 @@ function fromSnapshot(doc) {
   return { id: doc.id, ...doc.data() };
 }
 
+function storeSyncTime(store) {
+  return store?.lastSeenAt || store?.updatedAt || store?.updatedAtMs;
+}
+
+function getMainDeviceStores(stores) {
+  const latestByName = new Map();
+
+  stores
+    .filter((store) => String(store.mainDeviceId || "").trim())
+    .forEach((store) => {
+      const key = String(store.name || store.storeId || store.id);
+      const current = latestByName.get(key);
+      if (!current || toMillis(storeSyncTime(store)) > toMillis(storeSyncTime(current))) {
+        latestByName.set(key, store);
+      }
+    });
+
+  return [...latestByName.values()].sort((a, b) => toMillis(storeSyncTime(b)) - toMillis(storeSyncTime(a)));
+}
+
 function pad(value) {
   return String(value).padStart(2, "0");
 }
@@ -115,7 +135,7 @@ function useStores() {
     const unsubscribe = onSnapshot(
       query(collection(db, "stores")),
       (snapshot) => {
-        setStores(snapshot.docs.map(fromSnapshot));
+        setStores(getMainDeviceStores(snapshot.docs.map(fromSnapshot)));
         setLoading(false);
         setError("");
       },
@@ -219,14 +239,15 @@ function Header({ usingDemo }) {
 
 function StoreCard({ store, tables, timers, now, onSelect }) {
   const stats = buildStoreStats(store, tables, timers, now);
-  const stale = toMillis(store.lastSeenAt || store.updatedAt) && now - toMillis(store.lastSeenAt || store.updatedAt) > 120_000;
+  const syncedAt = storeSyncTime(store);
+  const stale = toMillis(syncedAt) && now - toMillis(syncedAt) > 120_000;
 
   return (
     <button type="button" className="store-card" onClick={onSelect}>
       <div className="store-card-top">
         <div>
           <h2>{store.name || store.id}</h2>
-          <p className={stale ? "sync stale" : "sync"}>{store.isOpen === false ? "영업 종료" : "영업중"} · 마지막 동기화 {formatLastSeen(store.lastSeenAt || store.updatedAt, now)}</p>
+          <p className={stale ? "sync stale" : "sync"}>{store.isOpen === false ? "영업 종료" : "영업중"} · 마지막 동기화 {formatLastSeen(syncedAt, now)}</p>
         </div>
         <span className={stats.isFull ? "full-badge full" : "full-badge"}>{stats.isFull ? "만석" : `빈 테이블 ${stats.emptyTableCount}`}</span>
       </div>
@@ -280,16 +301,20 @@ function StoreList({ stores, now, onSelect, usingDemo }) {
         <Metric label="후카 추가 추천" value={`${summary.refill}개`} tone={summary.refill ? "success" : ""} />
       </section>
       <section className="store-list">
-        {sortByName(stores).map((store) => (
-          <StoreCard
-            key={store.id}
-            store={store}
-            tables={tablesByStore[store.id] || []}
-            timers={timersByStore[store.id] || []}
-            now={now}
-            onSelect={() => onSelect(store.id)}
-          />
-        ))}
+        {stores.length === 0 && !usingDemo ? (
+          <div className="empty-state">메인기기로 지정된 지점이 없습니다.</div>
+        ) : (
+          sortByName(stores).map((store) => (
+            <StoreCard
+              key={store.id}
+              store={store}
+              tables={tablesByStore[store.id] || []}
+              timers={timersByStore[store.id] || []}
+              now={now}
+              onSelect={() => onSelect(store.id)}
+            />
+          ))
+        )}
       </section>
     </>
   );
@@ -313,7 +338,7 @@ function StoreDetail({ store, now, onBack }) {
         <div>
           <p className="eyebrow">Store Detail</p>
           <h1>{store.name || store.id}</h1>
-          <p className="sync">마지막 동기화 {formatLastSeen(store.lastSeenAt || store.updatedAt, now)}</p>
+          <p className="sync">마지막 동기화 {formatLastSeen(storeSyncTime(store), now)}</p>
         </div>
       </header>
       {error && <div className="notice error">{error}</div>}
