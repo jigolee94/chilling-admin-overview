@@ -100,10 +100,19 @@ function computeEstimatedEnd(timer) {
 function computeTimerStatus(timer, now = Date.now()) {
   if (!timer) return "empty";
   const nextTaskAt = toMillis(timer.nextTaskAt);
-  if (timer.needsConfirm || timer.isOverdue || timer.status === "overdue" || (nextTaskAt && nextTaskAt <= now)) return "overdue";
-  if (timer.needsRefill || timer.status === "refill") return "refill";
-  if (timer.isUrgent || timer.status === "urgent" || (nextTaskAt && nextTaskAt - now <= 60_000)) return "urgent";
+  if (timer.needsConfirm || timer.isOverdue || timer.status === "overdue" || timer.status === "needs_confirm" || (nextTaskAt && nextTaskAt <= now)) return "overdue";
+  if (timer.needsRefill || timer.status === "refill" || timer.status === "recommend_refill") return "refill";
+  if (timer.isUrgent || timer.status === "urgent" || timer.status === "critical_1m" || (nextTaskAt && nextTaskAt - now <= 60_000)) return "urgent";
   return "normal";
+}
+
+function computeTableStatus(table, timer, now = Date.now()) {
+  if (timer) return computeTimerStatus(timer, now);
+  if (table?.status === "needs_confirm") return "overdue";
+  if (table?.status === "recommend_refill") return "refill";
+  if (table?.status === "critical_1m") return "urgent";
+  if (table?.status === "active") return "normal";
+  return "empty";
 }
 
 function statusText(status) {
@@ -130,6 +139,13 @@ function statusClass(status) {
 
 function sortByName(items) {
   return [...items].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ko-KR", { numeric: true }));
+}
+
+function filterMainDeviceItems(store, items) {
+  if (!firebaseConfigured) return items;
+  const mainDeviceId = String(store?.mainDeviceId || "").trim();
+  if (!mainDeviceId) return [];
+  return items.filter((item) => String(item.sourceDeviceId || "") === mainDeviceId);
 }
 
 function useStores() {
@@ -261,9 +277,11 @@ function useStoreDetail(storeId) {
 }
 
 function buildStoreStats(store, tables, timers, now) {
-  const activeTimers = timers.filter((timer) => timer.status !== "completed" && !timer.completed);
+  const visibleTables = filterMainDeviceItems(store, tables);
+  const visibleTimers = filterMainDeviceItems(store, timers);
+  const activeTimers = visibleTimers.filter((timer) => timer.status !== "completed" && !timer.completed);
   const tableIdsWithTimers = new Set(activeTimers.map((timer) => timer.tableId));
-  const emptyTables = tables.filter((table) => !tableIdsWithTimers.has(table.id));
+  const emptyTables = visibleTables.filter((table) => !tableIdsWithTimers.has(table.id));
   const enrichedTimers = activeTimers.map((timer) => ({
     ...timer,
     statusComputed: computeTimerStatus(timer, now),
@@ -276,7 +294,7 @@ function buildStoreStats(store, tables, timers, now) {
     .filter((timer) => timer.estimatedEndAtComputed)
     .sort((a, b) => a.estimatedEndAtComputed - b.estimatedEndAtComputed);
   const earliestTimer = availableCandidates[0] || null;
-  const isFull = tables.length > 0 && emptyTables.length === 0;
+  const isFull = visibleTables.length > 0 && emptyTables.length === 0;
 
   return {
     activeTimerCount: activeTimers.length,
@@ -387,10 +405,12 @@ function StoreList({ stores, tablesByStore, timersByStore, now, onSelect, usingD
 function StoreDetail({ store, now, onBack }) {
   const { tables, timers, error } = useStoreDetail(store?.id);
   const [layoutZoom, setLayoutZoom] = useState(DEFAULT_LAYOUT_ZOOM);
-  const stats = buildStoreStats(store, tables, timers, now);
+  const visibleTables = useMemo(() => filterMainDeviceItems(store, tables), [store, tables]);
+  const visibleTimers = useMemo(() => filterMainDeviceItems(store, timers), [store, timers]);
+  const stats = buildStoreStats(store, visibleTables, visibleTimers, now);
   const timerByTable = new Map(stats.enrichedTimers.map((timer) => [timer.tableId, timer]));
-  const layoutWidth = Number(store.layoutWidth || Math.max(...tables.map((table) => Number(table.x || 0) + 32), 140));
-  const layoutHeight = Number(store.layoutHeight || Math.max(...tables.map((table) => Number(table.y || 0) + 34), 160));
+  const layoutWidth = Number(store.layoutWidth || Math.max(...visibleTables.map((table) => Number(table.x || 0) + 32), 140));
+  const layoutHeight = Number(store.layoutHeight || Math.max(...visibleTables.map((table) => Number(table.y || 0) + 34), 160));
   const sortedTimers = [...stats.enrichedTimers].sort((a, b) => {
     const rank = { overdue: 0, urgent: 1, refill: 2, normal: 3 };
     return (rank[a.statusComputed] ?? 9) - (rank[b.statusComputed] ?? 9) || (toMillis(a.nextTaskAt) || 0) - (toMillis(b.nextTaskAt) || 0);
@@ -428,7 +448,7 @@ function StoreDetail({ store, now, onBack }) {
         <div className="section-title">
           <h2>테이블 배치도</h2>
           <div className="layout-toolbar">
-            <span>{tables.length}개 테이블</span>
+          <span>{visibleTables.length}개 테이블</span>
             <div className="zoom-controls" aria-label="테이블 크기 조절">
               <button type="button" aria-label="테이블 작게" onClick={() => setLayoutZoom((value) => clampLayoutZoom(value - LAYOUT_ZOOM_STEP))}>−</button>
               <strong>{Math.round(layoutZoom * 100)}%</strong>
@@ -438,20 +458,23 @@ function StoreDetail({ store, now, onBack }) {
         </div>
         <div className="layout-scroll">
           <div className="layout-board" style={{ aspectRatio: `${layoutWidth} / ${layoutHeight}`, "--table-zoom": layoutZoom }}>
-            {tables.map((table) => {
+            {visibleTables.map((table) => {
               const timer = timerByTable.get(table.id);
-              const status = computeTimerStatus(timer, now);
+              const status = computeTableStatus(table, timer, now);
               const left = `${(Number(table.x || 0) / layoutWidth) * 100}%`;
               const top = `${(Number(table.y || 0) / layoutHeight) * 100}%`;
+              const stageLabel = timer?.currentStage || timer?.currentStageLabel || table.currentStage || "진행 중";
+              const nextTaskAt = timer?.nextTaskAt || table.nextTaskAt;
+              const estimatedEndAt = timer?.estimatedEndAtComputed || table.estimatedEndAt;
               return (
                 <div key={table.id} className={`table-card ${statusClass(status)}`} style={{ left, top }}>
                   <div className="table-name">{table.name}</div>
                   <div className="table-status">{statusText(status)}</div>
-                  {timer ? (
+                  {timer || table.currentStage || table.nextTaskAt ? (
                     <>
-                      <div className="table-stage">{timer.currentStageLabel || "진행 중"}</div>
-                      <div className="table-time">{formatRelative(timer.nextTaskAt, now)}</div>
-                      <div className="table-end">예상 {formatClock(timer.estimatedEndAtComputed)}</div>
+                      <div className="table-stage">{stageLabel}</div>
+                      <div className="table-time">{formatRelative(nextTaskAt, now)}</div>
+                      <div className="table-end">예상 {formatClock(estimatedEndAt)}</div>
                     </>
                   ) : (
                     <div className="table-empty-text">예약 가능</div>
@@ -475,7 +498,7 @@ function StoreDetail({ store, now, onBack }) {
               <article key={timer.id} className={`timer-row ${statusClass(timer.statusComputed)}`}>
                 <div>
                   <strong>{timer.tableName || timer.tableId}</strong>
-                  <p>{statusText(timer.statusComputed)} · {timer.currentStageLabel || "진행 중"}</p>
+                  <p>{statusText(timer.statusComputed)} · {timer.currentStage || timer.currentStageLabel || "진행 중"}</p>
                 </div>
                 <div className="timer-row-times">
                   <span>후카 나감 {formatClock(timer.servedAt || timer.scheduledServedAt)}</span>
